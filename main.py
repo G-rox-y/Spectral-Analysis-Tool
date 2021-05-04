@@ -1,4 +1,3 @@
-#add noise reduction
 import os
 import cv2
 import pickle
@@ -7,8 +6,68 @@ import pandas as pd
 from tkinter import Tk
 from tkinter.filedialog import askopenfilename
 from matplotlib import pyplot as plt
-from matplotlib.widgets import Button
-uvjet = False
+from matplotlib.widgets import Button, Slider, CheckButtons
+
+def ImageProcesser():
+    img = GetImage()
+    r, g, b = GetCorrection()
+    imColor = ColorCorrection(img.copy(), r, g, b)
+    imBW = cv2.cvtColor(imColor, cv2.COLOR_BGR2GRAY)
+    imNeg = cv2.bitwise_not(imBW)
+    imFilter = Filter(imNeg)
+    imClear = NoiseRemover(imFilter, imBW)
+    cv2.destroyAllWindows()
+    return imClear, imNeg
+
+def SpectralIntensity(imCrop, h, w):
+    # definiranje varijabli
+    ylist = np.array([])
+    marker = 0; scord = 0; ecord = 0
+
+    # for petlja koja prolazi kroz svaki redak slike i zbraja mu prosječnu vrijednost
+    for i in range(w):
+        sum = np.int64(0)
+
+        # zbrajanje svih vrijednosti u redu
+        for j in range(h):  sum += imCrop[j][i]
+
+        # uvjeti koji odvajaju spektar od ostatka slike
+        if (marker == 0) & (sum > 0): marker = 1
+        elif marker == 1 and sum == 0: marker = 2
+        elif marker == 2 and sum > 0: marker = 3; scord = i
+        elif marker == 3 and sum == 0: marker = 4; ecord = i
+
+        ylist = np.append(ylist, sum)
+
+    # lista vrijednosti x osi za spektar u pikometrima
+    sran , eran = GetRange()
+    xlist = Straighten(sran, eran, ecord - scord + 1)
+    dif = eran - sran
+    return xlist, ylist, scord, ecord, dif
+
+def ColorCorrection(img, ammR, ammG, ammB):
+    if ammR != 1.0:
+        r = np.array(img[:, :, 2])
+        r = r.astype(np.float16)
+        r //= ammR
+        r = r.astype(np.uint8)
+        img[:, :, 2] = r
+
+    if ammB != 1.0:
+        b = np.array(img[:, :, 0])
+        b = b.astype(np.float16)
+        b //= ammB
+        b = b.astype(np.uint8)
+        img[:, :, 0] = b
+
+    if ammG != 1.0:
+        g = np.array(img[:, :, 1])
+        g = g.astype(np.float16)
+        g //= ammG
+        g = g.astype(np.uint8)
+        img[:, :, 1] = g
+
+    return img
 
 def RotationTool(image):
     (h, w) = image.shape[:2]
@@ -30,6 +89,23 @@ def RotationTool(image):
     rotatedl = cv2.line(rotatedl, (x2, y1), (x2, y2), (0, 255, 0), thickness=5)
     return rotatedl, int(x1), int(y1), int(x2), int(y2), ang+dec/100
 
+def ImageCropping(imNeg, imClear):
+    y1 = 0
+    y2 = 0
+    ang = float(0)
+    # petlja koja osvježava izgled slike koja se reže
+    while True:
+        Show(RotationTool(imNeg)[0])
+        # uvjet koji u slučaju pritiska slova Q spremaa promjene
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            imRotate, x1, y1, x2, y2, ang = RotationTool(imClear)
+            cv2.destroyAllWindows()
+            break
+    # rezanje slike
+    if y2 < y1: y1, y2 = y2, y1
+    if x2 < x1: x1, x2 = x2, x1
+    imCrop = imRotate[y1:y2, x1:x2]  # gotova slika
+    return imCrop
 
 def Filter(img):
     imb = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
@@ -63,43 +139,76 @@ def NoiseRemover(src, img):
 
     return clear
 
-def empty(a):
-    pass
-
 def Show(img):
     imS = cv2.resize(img, (1280, 960))
     cv2.imshow('image', imS)
 
-def StackImages(scale,imgArray):
-    rows = len(imgArray)
-    cols = len(imgArray[0])
-    rowsAvailable = isinstance(imgArray[0], list)
-    width = imgArray[0][0].shape[1]
-    height = imgArray[0][0].shape[0]
-    if rowsAvailable:
-        for x in range ( 0, rows):
-            for y in range(0, cols):
-                if imgArray[x][y].shape[:2] == imgArray[0][0].shape[:2]:
-                    imgArray[x][y] = cv2.resize(imgArray[x][y], (0, 0), None, scale, scale)
-                else:
-                    imgArray[x][y] = cv2.resize(imgArray[x][y], (imgArray[0][0].shape[1], imgArray[0][0].shape[0]), None, scale, scale)
-                if len(imgArray[x][y].shape) == 2: imgArray[x][y]= cv2.cvtColor( imgArray[x][y], cv2.COLOR_GRAY2BGR)
-        imageBlank = np.zeros((height, width, 3), np.uint8)
-        hor = [imageBlank]*rows
-        hor_con = [imageBlank]*rows
-        for x in range(0, rows):
-            hor[x] = np.hstack(imgArray[x])
-        ver = np.vstack(hor)
+def Library():
+    file_to_read = open("library.pickle", "rb")
+    loaded_dictionary = pickle.load(file_to_read)
+    return loaded_dictionary
+
+def empty(a):
+    pass
+
+def TrackbarsCropping(shape):
+    cv2.namedWindow("Cropping")
+    cv2.resizeWindow("Cropping", 960, 240)
+    cv2.createTrackbar("angle", "Cropping", 0, 360, empty)
+    cv2.createTrackbar("decimal", "Cropping", 0, 99, empty)
+    cv2.createTrackbar("x1", "Cropping", 5000, shape[1], empty)
+    cv2.createTrackbar("y1", "Cropping", shape[0] // 2, shape[0], empty)
+    cv2.createTrackbar("x2", "Cropping", 1300, shape[1], empty)
+    cv2.createTrackbar("y2", "Cropping", shape[0] // 3, shape[0], empty)
+
+def TrackbarFilter():
+    cv2.namedWindow("Filter parameters")
+    cv2.resizeWindow("Filter parameters", 960, 80)
+    cv2.createTrackbar("threshold", "Filter parameters", 228, 255, empty)
+
+def GetImage():
+    Tk().withdraw()
+    filename = askopenfilename()
+    img = cv2.imread(filename, cv2.IMREAD_COLOR)
+    return img.copy()
+
+def GetRange():
+    st = str(input("Camera wavelength lower limit(picometers): "))
+    en = str(input("Camera wavelength upper limit(picometers): "))
+    if st[-1] == 'z':
+        start = np.int64(st[0:-1]) * 100000
+        end = np.int64(en[0:-1]) * 100000
     else:
-        for x in range(0, rows):
-            if imgArray[x].shape[:2] == imgArray[0].shape[:2]:
-                imgArray[x] = cv2.resize(imgArray[x], (0, 0), None, scale, scale)
-            else:
-                imgArray[x] = cv2.resize(imgArray[x], (imgArray[0].shape[1], imgArray[0].shape[0]), None,scale, scale)
-            if len(imgArray[x].shape) == 2: imgArray[x] = cv2.cvtColor(imgArray[x], cv2.COLOR_GRAY2BGR)
-        hor = np.hstack(imgArray)
-        ver = hor
-    return ver
+        try:
+            start = np.int64(st)
+            end = np.int64(en)
+        except:
+            print("Not a valid input, please try again")
+            return GetRange()
+    return start, end
+
+def GetCorrection():
+    try:
+        r = np.float16(input("Red color reduction factor: "))
+        g = np.float16(input("Green color reduction factor: "))
+        b = np.float16(input("Blue color reduction factor: "))
+    except:
+        print("Not a valid input, please try again")
+        return GetCorrection()
+    return r, g, b
+
+def GetMode():
+    print("Linear or Logarythmic mode? (lin/log)")
+    tekst = str(input())
+    tekst = tekst.strip()
+    tekst = tekst.lower()
+    if tekst == "0": return 0
+    elif tekst == "1": return 1
+    elif tekst == "lin": return 0
+    elif tekst == "log": return 1
+
+    print("Not a vaild input, please try again.")
+    return GetMode()
 
 def Brusenje(values, tam, tsize):
     GData = np.array(values)
@@ -126,34 +235,6 @@ def Straighten(start, end, size):
     for i in range(size - 1):   arr = np.append(arr, start + round(change * i))
     return arr
 
-def Library():
-    file_to_read = open("library.pickle", "rb")
-    loaded_dictionary = pickle.load(file_to_read)
-    return loaded_dictionary
-
-#funkcija za kreiranje kliznih označivača
-def TrackbarsCropping(shape):
-    cv2.namedWindow("Cropping")
-    cv2.resizeWindow("Cropping", 960, 240)
-    cv2.createTrackbar("angle", "Cropping", 0, 360, empty)
-    cv2.createTrackbar("decimal", "Cropping", 0, 99, empty)
-    cv2.createTrackbar("x1", "Cropping", 5000, shape[1], empty)
-    cv2.createTrackbar("y1", "Cropping", shape[0] // 2, shape[0], empty)
-    cv2.createTrackbar("x2", "Cropping", 1300, shape[1], empty)
-    cv2.createTrackbar("y2", "Cropping", shape[0] // 3, shape[0], empty)
-
-def TrackbarsGraphParam():
-    cv2.namedWindow("Graph parameters")
-    cv2.resizeWindow("Graph parameters", 960, 80)
-    cv2.createTrackbar("step size", "Graph parameters", 15, 50, empty)
-    cv2.createTrackbar("threshold", "Graph parameters", 400, 3000, empty)
-
-def TrackbarFilter():
-    cv2.namedWindow("Filter parameters")
-    cv2.resizeWindow("Filter parameters", 960, 80)
-    #cv2.createTrackbar("step size", "Filter parameters", 15, 50, empty)
-    cv2.createTrackbar("threshold", "Filter parameters", 228, 255, empty)
-
 def Smoothener(values, tam, tsize):
     lista = np.array(values)
     if tam == 2: return lista
@@ -176,143 +257,62 @@ def HoleFinder(values, xlist):
             positions = np.append(positions, i)
     return holes, positions
 
-def ImageProcesser():
-    img = GetImage()
-    r, g, b = GetCorrection()
-    imColor = ColorCorrection(img.copy(), r, g, b)
-    imBW = cv2.cvtColor(imColor, cv2.COLOR_BGR2GRAY)
-    imNeg = cv2.bitwise_not(imBW)
-    imFilter = Filter(imNeg)
-    imClear = NoiseRemover(imFilter, imBW)
-    cv2.destroyAllWindows()
-    return imClear, imNeg
+def PlotGraph(xlist, ylist, scord, ecord, mode):
+    global Slist
+    global Holelist
+    global Poslist
 
-def ColorCorrection(img, ammR, ammG, ammB):
-    if ammR != 1.0:
-        r = np.array(img[:, :, 2])
-        r = r.astype(np.float16)
-        r //= ammR
-        r = r.astype(np.uint8)
-        img[:, :, 2] = r
-
-    if ammB != 1.0:
-        b = np.array(img[:, :, 0])
-        b = b.astype(np.float16)
-        b //= ammB
-        b = b.astype(np.uint8)
-        img[:, :, 0] = b
-
-    if ammG != 1.0:
-        g = np.array(img[:, :, 1])
-        g = g.astype(np.float16)
-        g //= ammG
-        g = g.astype(np.uint8)
-        img[:, :, 1] = g
-
-    return img
-
-def GetImage():
-    Tk().withdraw()
-    filename = askopenfilename()
-    img = cv2.imread(filename, cv2.IMREAD_COLOR)
-    return img.copy()
-
-def GetRange():
-    start = np.int64(input("Camera wavelength lower limit(picometers): "))
-    end = np.int64(input("Camera wavelength upper limit(picometers): "))
-    return start, end
-
-def GetCorrection():
-    r = np.float16(input("Red color reduction factor: "))
-    g = np.float16(input("Green color reduction factor: "))
-    b = np.float16(input("Blue color reduction factor: "))
-    return r, g, b
-
-def ImageCropping(imNeg, imClear):
-    y1 = 0
-    y2 = 0
-    ang = float(0)
-    # petlja koja osvježava izgled slike koja se reže
-    while True:
-        Show(RotationTool(imNeg)[0])
-        # uvjet koji u slučaju pritiska slova Q spremaa promjene
-        if cv2.waitKey(1) & 0xFF == ord('q'):
-            imRotate, x1, y1, x2, y2, ang = RotationTool(imClear)
-            cv2.destroyAllWindows()
-            break
-    # rezanje slike
-    if y2 < y1: y1, y2 = y2, y1
-    if x2 < x1: x1, x2 = x2, x1
-    imCrop = imRotate[y1:y2, x1:x2]  # gotova slika
-    cv2.imwrite("image.png", imCrop)
-    return imCrop
-
-def SpectralIntensity(imCrop, h, w):
-    # definiranje varijabli
-    ylist = np.array([])
-    marker = 0; scord = 0; ecord = 0
-
-    # for petlja koja prolazi kroz svaki redak slike i zbraja mu prosječnu vrijednost
-    for i in range(w):
-        sum = np.int64(0)
-
-        # zbrajanje svih vrijednosti u redu
-        for j in range(h):  sum += imCrop[j][i]
-
-        # uvjeti koji odvajaju spektar od ostatka slike
-        if (marker == 0) & (sum > 0): marker = 1
-        elif marker == 1 and sum == 0: marker = 2
-        elif marker == 2 and sum > 0: marker = 3; scord = i
-        elif marker == 3 and sum == 0: marker = 4; ecord = i
-
-        ylist = np.append(ylist, sum)
-
-    # lista vrijednosti x osi za spektar u pikometrima
-    sran , eran = GetRange()
-    xlist = Straighten(sran, eran, ecord - scord + 1)
-    return xlist, ylist, scord, ecord
-
-def PlotGraph(xlist, ylist, scord, ecord):
-    global uvjet
-    uvjet = True
     Slist = np.array([])
     Holelist = np.array([])
     Poslist = np.array([])
 
-    while uvjet == True:
-        am = cv2.getTrackbarPos("step size", "Graph parameters")
-        size = cv2.getTrackbarPos("threshold", "Graph parameters")
+    Slist = Smoothener(ylist[scord:ecord], 15, 400)
+    Holelist, Poslist = HoleFinder(Slist, xlist)
 
-        Slist = Smoothener(ylist[scord:ecord], am, size)
+    fig =plt.figure()
+    ax = fig.subplots()
+    plt.subplots_adjust(bottom=0.25)
+    p, = ax.plot(xlist, Slist, linewidth=0.5)
+    StepSlide = plt.axes([0.15, 0.15, 0.65, 0.03])
+    StepFactor = Slider(StepSlide, "Step size", valmin=2, valmax=50, valinit=15, valstep=1)
+    ThresholdSlide = plt.axes([0.15, 0.1, 0.65, 0.03])
+    ThresholdFactor = Slider(ThresholdSlide, "Threshold", valmin=10, valmax=3000, valinit=400, valstep=5)
+
+    ax_confirm = plt.axes([0.875, 0.125, 0.1, 0.03])
+    ConfirmButton = Button(ax_confirm, "Confirm")
+    if mode: ax.set_yscale('log')
+
+    def update(val):
+        global Slist
+        global Holelist
+        global Poslist
+        currentStep = StepFactor.val
+        currentThreshold = ThresholdFactor.val
+        Slist = Smoothener(ylist[scord:ecord], currentStep, currentThreshold)
         Holelist, Poslist = HoleFinder(Slist, xlist)
-        fig, axs = plt.subplots(2)
-        axs[0].plot(xlist, ylist[scord:ecord], linewidth=0.5)
-        axs[1].plot(xlist, Slist, linewidth=0.5)
-        for part in Holelist:
-            axs[1].axvline(x=part, linewidth=0.5, color='red')
+        p.set_ydata(Slist)
+        fig.canvas.draw()
 
-        confirmax = plt.axes([0.8, 0.020, 0.1, 0.04])
-        buttonconfirm = Button(confirmax, 'Confirm', hovercolor='0.975')
-        applyax = plt.axes([0.68, 0.020, 0.1, 0.04])
-        buttonapply = Button(applyax, 'Apply', hovercolor='0.975')
+    def closee(val):
+        plt.close()
 
-        def confirm(event):
-            global uvjet
-            uvjet = False
-            plt.close()
+    StepFactor.on_changed(update)
+    ThresholdFactor.on_changed(update)
+    ConfirmButton.on_clicked(closee)
 
-        def apply(event):
-            plt.close()
+    def quit_figure(event):
+        if event.key == 'q':
+            plt.close(event.canvas.figure)
 
-        buttonconfirm.on_clicked(confirm)
-        buttonapply.on_clicked(apply)
+    cid = plt.gcf().canvas.mpl_connect('key_press_event', quit_figure)
 
-        plt.show()
+    plt.show()
 
-    cv2.destroyAllWindows()
+    plt.close()
+
     return Holelist, Poslist, Slist
 
-def AbsorptionFinder(Holelist, Poslist, Slist, xlist):
+def AbsorptionFinder(Holelist, Poslist, Slist, xlist, cordif, dif):
     data = pd.Series(Library())
     data.name = "Absorption line values"
     c = 0
@@ -321,22 +321,28 @@ def AbsorptionFinder(Holelist, Poslist, Slist, xlist):
         curr = np.int64(part)
         l = curr; r = l
         lu = True; ru = True
-
+        lc = np.int16(0)
+        rc = np.int16(0)
         while lu:
             l -= 1
+            lc += 1
             if Slist[l] > Slist[l - 1]:
                 lu = False
         while ru:
             r += 1
+            rc += 1
             if Slist[r] > Slist[r + 1]:
                 ru = False
 
+        width = ((rc + lc) / cordif) * dif
         mby = data[(data > xlist[l + (curr - l) // 2]) & (data < xlist[curr + (r - curr) // 2])]
         print("Absorption line number ", c)
+        print("Absorption line witdh: ", width, "pm")
         print("Looking for variables between " + str(xlist[l + (curr - l) // 2]) + " pm, and " + str(
             xlist[curr + (r - curr) // 2]) + " pm")
         print(mby)
         print("--------------------------")
+
         i = 1
         for member in mby:
             plt.axvline(x=member, linewidth=0.3, color='green')
@@ -349,20 +355,25 @@ def AbsorptionFinder(Holelist, Poslist, Slist, xlist):
 def main():
     print("If the file explorer doesnt show up within a few seconds, feel free to restart the program")
     os.system('cls')
+
     imClear, imNeg = ImageProcesser()
     h, w = imNeg.shape[:2]
-
     TrackbarsCropping([h, w])
     imCrop = ImageCropping(imNeg, imClear)
     h, w = imCrop.shape[:2]
-    xlist , ylist, scord, ecord = SpectralIntensity(imCrop, h, w)
+
+    xlist , ylist, scord, ecord, dif = SpectralIntensity(imCrop, h, w)
     xlist2 = Straighten(1, w, len(ylist) + 1)
-    #plt.plot(xlist2, ylist)
-    #plt.show()
-    TrackbarsGraphParam()
-    Holelist, Poslist, Slist = PlotGraph(xlist, ylist, scord, ecord)
+
+    mode = GetMode()
+
+    Holelist, Poslist, Slist = PlotGraph(xlist, ylist, scord, ecord, mode)
+
     plt.plot(xlist, ylist[scord:ecord], linewidth=0.5)
-    AbsorptionFinder(Holelist, Poslist, Slist, xlist)
+    if mode: plt.yscale('log')
+    cordif = ecord - scord
+
+    AbsorptionFinder(Holelist, Poslist, Slist, xlist, cordif, dif)
 
 if __name__ == '__main__':
     main()
