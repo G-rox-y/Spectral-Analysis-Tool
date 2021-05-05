@@ -21,7 +21,7 @@ The next thing to do is insert reduction factors,, a reduction factor means how 
 
 After that select the intensity threshold to filter out the background, but in such a way that spectrum stays intact (and dont worry about the dots, that noise will be automatically removed). 
 
-Rotate and crop the image using CV2 trackbars.
+Rotate and crop the image using CV2 trackbars. It is important that when you crop, you dont crop the star out, the star has to be in the picture for the program to work.
 
 Next you will have to calibrate the program, to do that the program will ask you the maximal, and the minimal visible wavelength of your camera, that way the program will be able to calibrate to the spectrum.
 
