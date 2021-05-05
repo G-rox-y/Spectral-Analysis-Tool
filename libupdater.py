@@ -1,33 +1,118 @@
 import pickle
 
+def Load():
+    file_to_read = open("library.pickle", "rb")
+    loaded_dictionary = pickle.load(file_to_read)
+    return loaded_dictionary
+
+def Save(vdict):
+    file_to_write = open("library.pickle", "wb")
+    pickle.dump(vdict, file_to_write)
+
 def Help():
     print("Commands:")
     print("-l   to see the list")
     print("-a   to add new values the list")
     print("-r   to remove values from the list")
     print("-e   to edit a value")
+    print("-reset  resets the list")
     print("-h   shows this message")
+    print("\nIf you found any bugs or have any questions ask on Github")
+    print("https://github.com/G-rox-y/Spectral-Analysis-Tool\n")
 
-def Display():
-    pass
 
-def Add():
-    pass
+def Display(vdict):
+    for member in vdict:
+        print(member, vdict[member])
 
-def Remove():
-    pass
+def Add(vdict):
+    try:
+        element = str(input("Insert new element name: "))
+        value = int(input("Insert new element wavelength in pm: "))
+        vdict[element] = value
+        Save(vdict)
+        print(element, "added")
 
-def Edit():
-    pass
+    except:
+        print("Not a valid input, please try again")
+        print("Check your spelling and lowercase/uppercase letters")
+        Add(vdict)
 
-def Console(data):
-    if data[0] == "-":
-        if data[1] == "l":  Display()
-        elif data[1] == "a":    Add()
-        elif data[1] == "r":    Remove()
-        elif data[1] == "e":    Edit()
+def Remove(vdict):
+    try:
+        element = str(input("Insert element name: "))
+        vdict.pop(element)
+        Save(vdict)
+        print(element, "removed")
+
+    except:
+        print("Not a valid input, please try again")
+        print("Check your spelling and lowercase/uppercase letters")
+        Remove(vdict)
+
+def EditMode():
+    try:
+        tekst = str(input("Do you want to change the name or the value (name/value): ")).strip().lower()
+        if tekst[0] == 'n': return 0
+        elif tekst[0] == 'v': return 1
+        else: tekst += 13
+
+    except 1:
+        print("Not a valid input, please try again")
+        return EditMode()
+
+
+def Edit(vdict):
+    try:
+        element = str(input("Insert element name: "))
+        mode = EditMode()
+
+        if not mode:
+            value = vdict[element]
+            vdict.pop(element)
+            element2 = str(input("Insert new element name: "))
+            vdict[element2] = value
+
+        else:
+            value = str(input("Insert new element value: "))
+            vdict[element] = value
+
+        Save(vdict)
+        print(element, "edited")
+
+    except:
+        print("Not a valid input, please try again")
+        Edit(vdict)
+
+def Confirmed():
+    print("Are you sure you want to reset the list, there is no going back, "
+          "your list will return to having all default values (yes/no)")
+    try:
+        decision = str(input()).strip().lower()
+        if decision[0] == 'y': return 1
+        elif decision[0] == 'n': return 0
+        else: decision += 13
+    except:
+        print("Not a valid input, please try again")
+        return Confirmed()
+
+def Console():
+    vdict = Load()
+    try:
+        data = str(input("Input command: ")).strip()
+        if data == "-l":  Display(vdict)
+        elif data == "-a":    Add(vdict)
+        elif data == "-r":    Remove(vdict)
+        elif data == "-e":    Edit(vdict)
         elif data[1] == "h":    Help()
-        else:   print("Unrecognized command")
+        elif data == "-reset":
+            if Confirmed(): First()
+            else: print("Reset canceled")
+        else: print("Unrecognized command")
+
+    except:
+        print("Not a valid input, please try again")
+        Console()
 
 def First():
     vdict = {
@@ -122,9 +207,9 @@ def First():
         "Sodium-II 17": 328560,
         "Sodium-II 18": 309273
     }
-    file_to_write = open("library.pickle", "wb")
-    pickle.dump(vdict, file_to_write)
-    print('done')
+    Save(vdict)
+    print('Reset done')
 
 if __name__ == '__main__':
-    First()
+    while True:
+        Console()
