@@ -198,7 +198,7 @@ def GetCorrection():
     return r, g, b
 
 def GetMode():
-    print("Linear or Logarythmic mode? (lin/log)")
+    print("Linear or Logarithmic mode? (lin/log)")
     tekst = str(input())
     tekst = tekst.strip()
     tekst = tekst.lower()
@@ -337,7 +337,7 @@ def AbsorptionFinder(Holelist, Poslist, Slist, xlist, cordif, dif):
         width = ((rc + lc) / cordif) * dif
         mby = data[(data > xlist[l + (curr - l) // 2]) & (data < xlist[curr + (r - curr) // 2])]
         print("Absorption line number ", c)
-        print("Absorption line witdh: ", width, "pm")
+        #print("Absorption line mean witdh: ", width, "pm")
         print("Looking for variables between " + str(xlist[l + (curr - l) // 2]) + " pm, and " + str(
             xlist[curr + (r - curr) // 2]) + " pm")
         print(mby)
@@ -350,7 +350,33 @@ def AbsorptionFinder(Holelist, Poslist, Slist, xlist, cordif, dif):
             i += 1
 
     for part in Holelist: plt.axvline(x=part, linewidth=1, color='red')
+
+    ax_search = plt.axes([0.45, 0.02, 0.1, 0.03])
+    SearchButton = Button(ax_search, "Search")
+    def closee (val):
+        plt.close()
+    SearchButton.on_clicked(closee)
     plt.show()
+    plt.close()
+
+
+def ManualDetection():
+    try:
+        broj = int(input("Manual detection absorption line wavelength (in pm): "))
+        thr = int(input("Allowed deviation (in pm): "))
+
+    except:
+        print("Not a valid input, please try again")
+        ManualDetection()
+        return
+
+    vlist = Library()
+    print("--------------------------")
+    print("Looking for variables between ", broj-thr, " pm, and ", broj + thr," pm")
+    for member in vlist:
+        if abs(vlist[member] - broj) < thr:
+            print(member, "-", vlist[member])
+    print("--------------------------")
 
 def main():
     print("If the file explorer doesnt show up within a few seconds, feel free to restart the program")
@@ -368,12 +394,15 @@ def main():
     mode = GetMode()
 
     Holelist, Poslist, Slist = PlotGraph(xlist, ylist, scord, ecord, mode)
-
-    plt.plot(xlist, ylist[scord:ecord], linewidth=0.5)
-    if mode: plt.yscale('log')
     cordif = ecord - scord
 
-    AbsorptionFinder(Holelist, Poslist, Slist, xlist, cordif, dif)
+    while True:
+        plt.plot(xlist, ylist[scord:ecord], linewidth=0.5)
+        if mode: plt.yscale('log')
+        AbsorptionFinder(Holelist, Poslist, Slist, xlist, cordif, dif)
+        ManualDetection()
+        _ = input('Enter any key to continue, or type "exit", to end the session   ')
+        if _.lower().strip() == "exit": break
 
 if __name__ == '__main__':
     main()
