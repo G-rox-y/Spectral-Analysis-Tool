@@ -340,6 +340,7 @@ def AbsorptionFinder(Holelist, Poslist, Slist, xlist, cordif, dif):
         #print("Absorption line mean witdh: ", width, "pm")
         print("Looking for variables between " + str(xlist[l + (curr - l) // 2]) + " pm, and " + str(
             xlist[curr + (r - curr) // 2]) + " pm")
+        count = 0
         print(mby)
         print("--------------------------")
 
@@ -353,8 +354,10 @@ def AbsorptionFinder(Holelist, Poslist, Slist, xlist, cordif, dif):
 
     ax_search = plt.axes([0.45, 0.02, 0.1, 0.03])
     SearchButton = Button(ax_search, "Search")
-    def closee (val):
+
+    def closee(val):
         plt.close()
+
     SearchButton.on_clicked(closee)
     plt.show()
     plt.close()
@@ -373,10 +376,14 @@ def ManualDetection():
     vlist = Library()
     print("--------------------------")
     print("Looking for variables between ", broj-thr, " pm, and ", broj + thr," pm")
+    reslist = np.array([])
     for member in vlist:
         if abs(vlist[member] - broj) < thr:
             print(member, "-", vlist[member])
+            reslist = np.append(reslist,  vlist[member])
     print("--------------------------")
+    return broj, thr, reslist
+
 
 def main():
     print("If the file explorer doesnt show up within a few seconds, feel free to restart the program")
@@ -400,7 +407,28 @@ def main():
         plt.plot(xlist, ylist[scord:ecord], linewidth=0.5)
         if mode: plt.yscale('log')
         AbsorptionFinder(Holelist, Poslist, Slist, xlist, cordif, dif)
-        ManualDetection()
+        pos, thr, res = ManualDetection()
+        plt.plot(xlist, ylist[scord:ecord], linewidth=0.5)
+        plt.axvline(x=pos, linewidth=1, color='red')
+        plt.axvline(x=pos+thr, linewidth=1, color='red')
+        plt.axvline(x=pos-thr, linewidth=1, color='red')
+        i = 0
+        for part in res:
+            i += 1
+            plt.axvline(x=part, linewidth=1, color='green')
+            plt.text(x=part, y=0, s=str(i), size=8)
+
+        ax_search = plt.axes([0.45, 0.02, 0.1, 0.03])
+        SearchButton = Button(ax_search, "Return")
+
+        def closee(val):
+            plt.close()
+
+        SearchButton.on_clicked(closee)
+        plt.show()
+        plt.close()
+
+        if mode: plt.yscale('log')
         _ = input('Enter any key to continue, or type "exit", to end the session   ')
         if _.lower().strip() == "exit": break
 
